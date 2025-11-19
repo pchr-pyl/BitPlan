@@ -62,15 +62,23 @@
                         <span>👤</span> ข้อมูลของคุณ
                     </h2>
 
-                    <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="grid grid-cols-3 gap-3 mb-4">
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1">อายุปัจจุบัน</label>
-                            <input type="number" id="currentAgeInput" value="30" min="1" max="59" class="w-full p-2 border rounded-lg font-bold text-indigo-600 text-center focus:ring-2 focus:ring-indigo-200 outline-none">
+                            <label class="block text-[10px] font-medium text-gray-500 mb-1">อายุปัจจุบัน</label>
+                            <input type="number" id="currentAgeInput" value="30" min="1" max="99" class="w-full p-2 border rounded-lg font-bold text-indigo-600 text-center focus:ring-2 focus:ring-indigo-200 outline-none">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1">เกษียณตอน</label>
-                            <input type="number" id="retireAgeInput" value="60" class="w-full p-2 border bg-gray-50 rounded-lg text-gray-500 text-center" disabled>
+                            <label class="block text-[10px] font-medium text-gray-500 mb-1">เกษียณตอน</label>
+                            <input type="number" id="retireAgeInput" value="60" min="1" max="99" class="w-full p-2 border rounded-lg font-bold text-gray-700 text-center focus:ring-2 focus:ring-indigo-200 outline-none">
                         </div>
+                        <div>
+                            <label class="block text-[10px] font-medium text-gray-500 mb-1">มีอายุถึง</label>
+                            <input type="number" id="dieAgeInput" value="80" min="1" max="120" class="w-full p-2 border rounded-lg font-bold text-gray-700 text-center focus:ring-2 focus:ring-indigo-200 outline-none bg-orange-50 border-orange-100">
+                        </div>
+                    </div>
+                    
+                    <div class="text-xs text-gray-400 text-center mb-4 bg-slate-50 rounded py-1">
+                        ระยะเวลาใช้เงินหลังเกษียณ: <span id="retirementDurationLabel" class="font-bold text-indigo-600">20</span> ปี
                     </div>
 
                     <div class="mb-2">
@@ -132,7 +140,7 @@
                         <p class="text-center text-indigo-200 text-sm mb-4" id="headerSubText">กำลังคำนวณ...</p>
                         
                         <div class="flex justify-between items-end mb-2 border-b border-white/10 pb-4">
-                            <h3 class="text-indigo-100 text-sm uppercase font-bold tracking-wider">เงินสดที่ต้องเตรียม (20 ปีหลังเกษียณ)</h3>
+                            <h3 class="text-indigo-100 text-sm uppercase font-bold tracking-wider" id="cashNeededLabel">เงินสดที่ต้องเตรียม (20 ปีหลังเกษียณ)</h3>
                             <div class="text-right">
                                 <p class="text-2xl font-bold text-white" id="totalCashNeeded">0 ล้านบาท</p>
                                 <p class="text-xs text-indigo-300">รวมเงินเฟ้อแล้ว</p>
@@ -209,16 +217,18 @@
     </div>
 
     <script>
-        // --- Constants ---
-        const retireAge = 60;
-        const dieAge = 80;
-        const yearsRetirement = dieAge - retireAge; 
+        // --- Variables ---
         let currentBTCPrice = 3000000; // Fallback price
 
         // --- Elements ---
         const currentAgeInput = document.getElementById('currentAgeInput');
+        const retireAgeInput = document.getElementById('retireAgeInput');
+        const dieAgeInput = document.getElementById('dieAgeInput');
+        
         const currentBTCInput = document.getElementById('currentBTCInput');
         const headerSubText = document.getElementById('headerSubText');
+        const retirementDurationLabel = document.getElementById('retirementDurationLabel');
+        const cashNeededLabel = document.getElementById('cashNeededLabel');
         
         const monthlyExpenseSlider = document.getElementById('monthlyExpense');
         const monthlyExpenseNum = document.getElementById('monthlyExpenseNum');
@@ -292,24 +302,35 @@
         // 3. Calculation Logic
         function calculateRetirement() {
             // Inputs
-            let age = parseInt(currentAgeInput.value);
-            if (isNaN(age) || age < 1) age = 1;
-            if (age >= 59) age = 59; 
+            let age = parseInt(currentAgeInput.value) || 30;
+            let retireAge = parseInt(retireAgeInput.value) || 60;
+            let dieAge = parseInt(dieAgeInput.value) || 80;
+            
+            // Validations
+            if(age < 1) age = 1;
+            if(retireAge <= age) retireAge = age + 1; // Ensure retirement is in future
+            if(dieAge <= retireAge) dieAge = retireAge + 1; // Ensure die age is after retirement
 
             let yearsToInvest = retireAge - age;
             let monthsToInvest = yearsToInvest * 12;
+            let yearsRetirement = dieAge - retireAge;
             
+            // Update labels
             headerSubText.innerText = `อายุ ${age} ปี ➔ มีเวลาเก็บออม ${yearsToInvest} ปี`;
+            retirementDurationLabel.innerText = yearsRetirement;
+            cashNeededLabel.innerText = `เงินสดที่ต้องเตรียม (${yearsRetirement} ปีหลังเกษียณ)`;
 
             let currentMonthlyExpense = parseInt(monthlyExpenseNum.value) || 0;
             let inflationRate = parseFloat(inflationRateInput.value) / 100;
             let futureBTCPrice = parseInt(btcFuturePriceInput.value);
             let userBTC = parseFloat(currentBTCInput.value) || 0;
 
-            // Calculate Future Expense
+            // Calculate Future Expense (FV of monthly expense at retirement age)
             let futureMonthlyExpense = currentMonthlyExpense * Math.pow((1 + inflationRate), yearsToInvest);
             
-            // Total Cash Needed (Monthly * 12 * 20 years)
+            // Total Cash Needed (Monthly * 12 * Years in Retirement)
+            // Note: ideally we should account for inflation *during* retirement too, 
+            // but keeping it simple (flat future expense) for estimation as per original logic.
             let totalCashNeeded = futureMonthlyExpense * 12 * yearsRetirement;
 
             // Target BTC
@@ -333,7 +354,7 @@
             monthsRemainingDisplay.innerText = monthsToInvest;
             
             // Monthly Targets
-            if(monthlyBTCNeeded > 0) {
+            if(monthlyBTCNeeded > 0 && monthsToInvest > 0) {
                 monthlyBTCTargetDisplay.innerText = monthlyBTCNeeded.toFixed(6);
                 monthlyTHBTargetDisplay.innerText = Math.ceil(monthlyTHBEst).toLocaleString() + " บาท";
             } else {
@@ -344,6 +365,8 @@
 
         // --- Event Listeners ---
         currentAgeInput.addEventListener('input', calculateRetirement);
+        retireAgeInput.addEventListener('input', calculateRetirement);
+        dieAgeInput.addEventListener('input', calculateRetirement);
         currentBTCInput.addEventListener('input', calculateRetirement);
         
         monthlyExpenseSlider.addEventListener('input', (e) => {
